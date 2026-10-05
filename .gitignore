@@ -1,0 +1,6 @@
+confido-dbt/
+target/
+dbt_packages/
+logs/
+.user.yml
+.env
