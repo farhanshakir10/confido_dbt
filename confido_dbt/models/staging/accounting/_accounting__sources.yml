@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: accounting
+    description: Data synced from the brand's external accounting system (remote IDs).
+    database: CONFIDO_DEMO
+    schema: PUBLIC
+    config:
+      loaded_at_field: _updated_at # loader timestamp
+      freshness:
+        warn_after: { count: 24, period: hour }
+    tables:
+      - name: INVOICES
+        description: Invoice headers with customer remote ID, paid date and currency.
+      - name: INVOICE_ITEMS
+        description: Invoice lines with item remote ID and total amount.
+      - name: CONTACTS
+        description: Accounting-system customers (bill-to accounts) with parent and global customer links.
+      - name: ITEMS
+        description: Accounting-system billing items, keyed by Confido internal ID.

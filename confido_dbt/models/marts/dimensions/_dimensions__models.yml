@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: Confido global customers. Shared customers have no company_detail_id.
+    columns:
+      - name: global_customer_id
+        data_tests: [unique, not_null]
+
+  - name: dim_products
+    description: Confido product catalog (cases, units, shippers).
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+
+  - name: dim_distribution_centers
+    description: Distribution centers; each belongs to one global customer.
+    columns:
+      - name: distribution_center_id
+        data_tests: [unique, not_null]
+      - name: global_customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: global_customer_id
+
+  - name: dim_items
+    description: Accounting-system billing items with line type and product mapping status.
+    columns:
+      - name: item_id
+        data_tests: [unique, not_null]
+        data_type: number

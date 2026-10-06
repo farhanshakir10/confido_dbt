@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_accounting__invoices
+    description: One row per invoice header, with currency and test-invoice flags.
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+
+  - name: stg_accounting__invoice_items
+    description: One row per invoice line. amount_original is the source TOTAL_AMOUNT.
+    columns:
+      - name: invoice_item_id
+        data_tests: [unique, not_null]
+      - name: invoice_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_accounting__invoices')
+                field: invoice_id
+
+  - name: stg_accounting__contacts
+    description: Accounting-system customers with parent and global customer links.
+    columns:
+      - name: contact_id
+        data_tests: [unique, not_null]
+
+  - name: stg_accounting__items
+    description: Accounting-system billing items. item_id is Confido's internal key.
+    columns:
+      - name: item_id
+        data_tests: [unique, not_null]

@@ -1,0 +1,18 @@
+version: 2
+
+sources:
+  - name: confido
+    description: Confido internal master data (internal IDs).
+    database: CONFIDO_DEMO
+    schema: PUBLIC
+    config:
+      loaded_at_field: _updated_at
+      freshness:
+        warn_after: { count: 24, period: hour }
+    tables:
+      - name: PRODUCTS
+        description: Confido product catalog (cases, units, shippers).
+      - name: GLOBAL_CUSTOMERS
+        description: Confido global customer master.
+      - name: CONFIDO_DISTRIBUTION_CENTERS
+        description: Distribution centers, each belonging to one global customer.
