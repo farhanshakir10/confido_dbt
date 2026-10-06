@@ -15,6 +15,7 @@ Follow these when adding or changing anything under `confido_dbt/models/`, `seed
 | Intermediate | `int_<entity_plural>__<verb_or_description>.sql` | `int_items__resolved_product.sql` |
 | Dimension | `dim_<entity_plural>.sql` | `dim_distribution_centers.sql` |
 | Fact | `fct_<grain_plural>.sql` | `fct_invoice_line_items.sql` |
+| Audit | `audit_<what_is_flagged>.sql` in `models/audit/` | `audit_unmapped_remote_ids.sql` |
 | Model yml | `_<folder>__models.yml` (one per folder) | `_intermediate__models.yml` |
 | Source yml | `_<folder>__sources.yml` | `_staging__sources.yml` |
 | Seed | `<entity>_<attribute_plural>.csv` | `item_line_types.csv` |

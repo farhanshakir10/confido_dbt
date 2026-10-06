@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: audit_unmapped_remote_ids
+    description: >
+      Work queue for data stewards: every unmapped customer or item remote ID,
+      its line count and dollar impact, and a suggested customer match where possible.
+      Suggestions are for human review and are never applied automatically.
+    data_tests:
+      # one row per remote ID per entity type (also the primary-key test)
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [entity_type, company_detail_id, remote_id]
+    columns:
+      - name: entity_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["customer", "item"]
+      - name: map_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "unmapped",
+                    "contact_not_found",
+                    "ambiguous",
+                    "item_not_found",
+                    "no_product",
+                  ]

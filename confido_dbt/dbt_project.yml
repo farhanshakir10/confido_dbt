@@ -27,6 +27,9 @@ clean-targets: # directories to be removed by `dbt clean`
 # In this example config, we tell dbt to build all models in the example/
 # directory as views. These settings can be overridden in the individual model
 # files using the `{{ config(...) }}` macro.
+# on-run-end:
+#   - "{{ dbt_artifacts.upload_results(results) }}"
+
 models:
   confido_dbt:
     staging:
@@ -40,3 +43,11 @@ models:
         +materialized: table
     audit:
       +materialized: view
+
+#   dbt_project_evaluator:
+#     +schema: project_evaluator
+#     +enabled: "{{ var('run_evaluator', false) }}"
+# seeds:
+#   dbt_project_evaluator:
+#     +schema: dbt_artifacts
+#     +enabled: "{{ var('run_evaluator', false) }}"
