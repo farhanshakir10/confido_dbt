@@ -8,12 +8,12 @@ with fct as (
 unmapped_customers as (
 
     select
-        'customer'                  as entity_type,
+        'customer' as entity_type,
         company_detail_id,
-        customer_remote_id          as remote_id,
-        customer_map_status         as map_status,
-        count(*)                    as line_count,
-        sum(amount_original)        as amount_impacted
+        customer_remote_id as remote_id,
+        customer_map_status as map_status,
+        count(*) as line_count,
+        sum(amount_original) as amount_impacted
     from fct
     where customer_map_status in ('unmapped', 'contact_not_found')
     group by all
@@ -25,12 +25,12 @@ unmapped_customers as (
 unmapped_items as (
 
     select
-        'item'                      as entity_type,
+        'item' as entity_type,
         company_detail_id,
-        item_remote_id              as remote_id,
-        product_map_status          as map_status,
-        count(*)                    as line_count,
-        sum(amount_original)        as amount_impacted
+        item_remote_id as remote_id,
+        product_map_status as map_status,
+        count(*) as line_count,
+        sum(amount_original) as amount_impacted
     from fct
     where product_map_status in ('ambiguous', 'item_not_found')
        or (product_map_status = 'no_product' and line_type = 'product')
@@ -62,12 +62,12 @@ customer_suggestions as (
     select
         company_detail_id,
         remote_id,
-        global_customer_id          as suggested_id,
-        customer_name               as suggested_name,
+        global_customer_id as suggested_id,
+        customer_name as suggested_name,
         match_score,
         count_if(match_score >= 90) over (
             partition by company_detail_id, remote_id
-        )                           as strong_match_count
+        ) as strong_match_count
     from scored
     qualify row_number() over (
         partition by company_detail_id, remote_id
@@ -96,12 +96,12 @@ final as (
         u.entity_type,
         u.company_detail_id,
         u.remote_id,
-        c.contact_name                                   as remote_name,
+        c.contact_name as remote_name,
         u.map_status,
         u.line_count,
         u.amount_impacted,
-        null::number                                     as candidate_product_count,
-        iff(s.match_score >= 90, s.suggested_id, null)   as suggested_global_customer_id,
+        null::number as candidate_product_count,
+        iff(s.match_score >= 90, s.suggested_id, null) as suggested_global_customer_id,
         iff(s.match_score >= 90, s.suggested_name, null) as suggested_customer_name,
         s.match_score,
         s.strong_match_count
@@ -119,15 +119,15 @@ final as (
         u.entity_type,
         u.company_detail_id,
         u.remote_id,
-        i.item_name                                      as remote_name,
+        i.item_name as remote_name,
         u.map_status,
         u.line_count,
         u.amount_impacted,
-        i.product_match_count                            as candidate_product_count,
-        null                                             as suggested_global_customer_id,
-        null                                             as suggested_customer_name,
-        null                                             as match_score,
-        null                                             as strong_match_count
+        i.product_match_count as candidate_product_count,
+        null as suggested_global_customer_id,
+        null as suggested_customer_name,
+        null as match_score,
+        null as strong_match_count
     from unmapped_items u
     left join items i
         on  i.item_remote_id    = u.remote_id
@@ -137,5 +137,5 @@ final as (
 
 select
     *,
-    current_timestamp()::timestamp_ntz                   as _dbt_loaded_at
+    current_timestamp()::timestamp_ntz as _dbt_loaded_at
 from final
