@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: stg_confido__products
+    description: Confido product catalog, with an HTML-in-name flag.
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+
+  - name: stg_confido__customers
+    description: Confido global customers. Null company_detail_id means a shared customer.
+    columns:
+      - name: global_customer_id
+        data_tests: [unique, not_null]
+
+  - name: stg_confido__distribution_centers
+    description: Distribution centers per customer, with the "All Other DCs" default flag.
+    columns:
+      - name: distribution_center_id
+        data_tests: [unique, not_null]

@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  # One row per accounting contact, resolved to a Confido global customer.
+  # Contacts without their own mapping inherit it from their parent contact.
+  - name: int_contacts__resolved_customer
+    description: One row per contact, with global customer resolved directly or from the parent contact.
+    data_tests:
+      # remote_id is only unique within a company, so test the pair.
+      # This also catches fan-out if the parent self-join matches more than one row.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [company_detail_id, remote_id]
+    columns:
+      - name: contact_id
+        data_tests: [unique, not_null]
+      # How global_customer_id was resolved: from the contact itself,
+      # from its parent, or not at all.
+      - name: customer_map_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["direct", "inherited_from_parent", "unmapped"]
+    # One row per item, with product mapping and line type
+  - name: int_items__resolved_product
+    description: One row per item, with a product only when exactly one matches, plus line type.
+    columns:
+      - name: item_id
+        data_tests: [unique, not_null] # no fan-out from items to products
+      - name: product_map_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["mapped", "ambiguous", "no_product"]
+      - name: line_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "product",
+                    "trade_spend",
+                    "deduction",
+                    "fee",
+                    "adjustment",
+                    "test",
+                  ]
+                # 'unclassified' fails this test on purpose: a new item needs a seed row
+
+  # One default DC per global customer
+  - name: int_customers__default_dc
+    description: The "All Other DCs" default DC for each global customer.
+    columns:
+      - name: global_customer_id
+        data_tests: [unique, not_null]
+    # One row per invoice line, with every mapping resolved
+  - name: int_invoice_items__enriched
+    description: One row per invoice line with customer, DC, product and change timestamp resolved.
+    data_tests:
+      # Same row count as the source lines: no fan-out, no dropped lines
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_accounting__invoice_items')
+    columns:
+      - name: invoice_item_id
+        data_tests: [unique, not_null]
+      - name: customer_map_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "direct",
+                    "inherited_from_parent",
+                    "unmapped",
+                    "contact_not_found",
+                  ]
+      - name: product_map_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["mapped", "ambiguous", "no_product", "item_not_found"]
+      - name: dc_assignment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["direct", "default", "unmapped"]
