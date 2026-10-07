@@ -92,11 +92,7 @@ Suggestions are never applied automatically.
 - **No DC on the invoice path:** `contacts.distribution_center_id` is 100% null.
 - **Items → products is 1:many:** Yogurt maps to 5 products, Ice cream to 2. A plain join inflates 2,527 lines to 5,853.
 - **Non-product lines:** EDLP, Promo, Early Pay Discount, Spoils, Short-Ship, etc.
-- **No issue date:** `PAID_ON_DATE` is the only business date.
 - **Currency:** null on ~69% of invoices; one invoice is CAD.
-- **Amounts:** `TOTAL_AMOUNT ≠ QTY × PRICE` on ~1,700 lines, so `TOTAL_AMOUNT` is the source of truth.
-- **Data quality:** test invoices, non-unique invoice `NUMBER`, HTML in two product names.
-- **Naming:** contact names differ from global customer names, so reporting uses the global name.
 
 ## Assumptions
 - Child contacts inherit the parent's global customer (one level).
@@ -112,7 +108,6 @@ Suggestions are never applied automatically.
 - Left joins throughout, so no line is dropped.
 - Products are aggregated per item before joining, so fan-out is impossible.
 - Incremental merge on `_source_updated_at` (latest loader timestamp across line, invoice, contact, item and DC), so late mapping fixes reprocess affected lines.
-- Contract enforced on the fact, with `on_schema_change = 'fail'`.
 - Nulls + status columns instead of `-1` unknown members.
 
 ## Tests
@@ -121,12 +116,7 @@ Suggestions are never applied automatically.
 - Nulls only where a status column explains them.
 - Cross-company checks on product, customer and DC mappings.
 - New items without a `line_type` fail the build.
-- A second incremental run with no changes processes 0 rows.
 
 ## Limitations
 - Single schema due to access limits; production would split layers into schemas with grants.
 - No FX rate source for non-USD invoices.
-- Deletes aren't caught incrementally → cleanup post_hook + scheduled full refresh.
-- Seed changes don't trigger the incremental → full refresh the fact after seed edits.
-- Audit fuzzy matching grows with contacts × customers → add a blocking key and materialize as a table.
-- Out of scope: Retailers, Product_Prices, Product_Shipping_Config, Product_Relationship, Map_Contact_Subsidiaries.
