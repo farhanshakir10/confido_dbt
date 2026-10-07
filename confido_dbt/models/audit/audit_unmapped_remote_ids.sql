@@ -38,7 +38,7 @@ unmapped_items as (
 
 ),
 
--- Score every unmapped contact against every allowed customer
+-- Score every unmapped contact against every customer it's allowed to match
 scored as (
 
     select
@@ -48,31 +48,25 @@ scored as (
         gc.customer_name,
         jarowinkler_similarity(lower(c.contact_name), lower(gc.customer_name)) as match_score
     from {{ ref('int_contacts__resolved_customer') }} c
-    join {{ ref('dim_customers') }} gc
-        -- only shared customers or the contact's own company
-        on gc.company_detail_id is null
-        or gc.company_detail_id = c.company_detail_id
+    cross join {{ ref('dim_customers') }} gc
     where c.customer_map_status = 'unmapped'
+      -- only shared customers or the contact's own company
+      and (gc.company_detail_id is null or gc.company_detail_id = c.company_detail_id)
 
 ),
 
--- Keep the best match, and count how many strong matches exist
+-- One row per contact: its best match, and how many strong matches exist
 customer_suggestions as (
 
     select
         company_detail_id,
         remote_id,
-        global_customer_id as suggested_id,
-        customer_name as suggested_name,
-        match_score,
-        count_if(match_score >= 90) over (
-            partition by company_detail_id, remote_id
-        ) as strong_match_count
+        max(match_score)                          as match_score,
+        max_by(global_customer_id, match_score)   as suggested_id,
+        max_by(customer_name, match_score)        as suggested_name,
+        count_if(match_score >= 90)               as strong_match_count
     from scored
-    qualify row_number() over (
-        partition by company_detail_id, remote_id
-        order by match_score desc, global_customer_id
-    ) = 1
+    group by company_detail_id, remote_id
 
 ),
 
