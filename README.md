@@ -88,65 +88,45 @@ Suggestions are never applied automatically.
 | `amount_usd` null | 1 line (CAD invoice, no FX source) |
 
 ## Data findings
-
-- **Customer remote IDs mix integers and hashes** (`GENERATED_...`). The hashed IDs cover ~1,600 invoices and don't exist in Contacts.
-- **No DC on the invoice path.** `contacts.distribution_center_id` is 100% null; invoices and items have no DC column.
-- **One item can map to many products.** "Yogurt" maps to 5 products and "Ice cream" to 2. A plain join inflates 2,527 lines to 5,853 rows.
-- **Some items are not products:** EDLP, Promo, Placement, Early Pay Discount, Retailer Spoils, Short-Ship, Services, A/R Clearing.
-- **No invoice issue date.** `PAID_ON_DATE` is the only business date; `CREATED_AT` is a load timestamp.
-- **Currency is null on ~69% of invoices** (one load batch); one invoice is in CAD.
-- **`TOTAL_AMOUNT` ≠ `QUANTITY × UNIT_PRICE`** on ~1,700 lines, so `TOTAL_AMOUNT` is treated as the source of truth.
-- **Test data present:** invoices like `TEST1`, `testDC`, `INVTESTSTAGING`; test items like "Test object".
-- **Invoice `NUMBER` is not unique**, so `ID` is used as the key.
-- **Two product names contain an HTML/XSS payload.** Flagged with `has_html_in_name`; BI tools must escape names.
-- **`CHECK_REMIT_ITEM_ID` is 100% null.**
-- **Contact and global customer names differ** (e.g. "UNFI West" → SuperValu). Reporting should use the global customer name.
+- **Impact:** of $8.33M in line amounts, ~$1.57M has no matching contact (hashed `GENERATED_` IDs) and ~$1.16M sits on ambiguous items.
+- **No DC on the invoice path:** `contacts.distribution_center_id` is 100% null.
+- **Items → products is 1:many:** Yogurt maps to 5 products, Ice cream to 2. A plain join inflates 2,527 lines to 5,853.
+- **Non-product lines:** EDLP, Promo, Early Pay Discount, Spoils, Short-Ship, etc.
+- **No issue date:** `PAID_ON_DATE` is the only business date.
+- **Currency:** null on ~69% of invoices; one invoice is CAD.
+- **Amounts:** `TOTAL_AMOUNT ≠ QTY × PRICE` on ~1,700 lines, so `TOTAL_AMOUNT` is the source of truth.
+- **Data quality:** test invoices, non-unique invoice `NUMBER`, HTML in two product names.
+- **Naming:** contact names differ from global customer names, so reporting uses the global name.
 
 ## Assumptions
-
-1. Child contacts inherit the parent contact's global customer.
-2. Unknown DC defaults to the customer's "All Other DCs" record (`dc_assignment = 'default'`).
-3. Ambiguous items stay at item level; no allocation across products without a business rule.
-4. Non-product lines stay in the fact, tagged with `line_type`.
-5. Null currency = USD (`is_currency_defaulted`). CAD has no FX rate, so `amount_usd` is null (`is_fx_missing`).
-6. `PAID_ON_DATE` is the reporting date.
-7. Test invoices are flagged (`is_test_invoice`), not deleted.
-8. `item_line_types.csv` classifications are based on item names and should be confirmed by the business.
-9. Remote IDs are unique only within a company, so all remote-ID joins are scoped by `company_detail_id`.
+- Child contacts inherit the parent's global customer (one level).
+- Unknown DC → the customer's "All Other DCs" record (`dc_assignment = 'default'`).
+- Ambiguous items are not allocated across products without a business rule.
+- Null currency = USD; CAD has no FX rate, so `amount_usd` is null.
+- `PAID_ON_DATE` is the reporting date.
+- `item_line_types.csv` is based on item names and needs business confirmation.
+- Remote IDs are unique only per company, so all joins are scoped by `company_detail_id`.
 
 ## Design decisions
-
-- **Staging keeps every column**, renamed and typed. Rows are flagged, not filtered.
-- **Left joins everywhere except invoice header**, so no line is ever dropped.
-- **Products are aggregated per item before joining**, so fan-out is impossible by design.
-- **Incremental fact (merge)** filtered on `_source_updated_at`, the latest `_updated_at` across the line, invoice, contact (including parent), item/products and DC. A late mapping fix reprocesses affected lines. Uses Snowflake's `GREATEST_IGNORE_NULLS` so unmapped lines aren't skipped.
-- **Loader timestamp (`_UPDATED_AT`) drives incremental loads**, not the source `UPDATED_AT`, which can arrive late.
-- **Model contract enforced** on the fact, with explicit types and `on_schema_change = 'fail'`.
-- **Nulls + status columns** instead of `-1` unknown members, so gaps stay visible and auditable.
+- Staging keeps every column; rows are flagged, never filtered.
+- Left joins throughout, so no line is dropped.
+- Products are aggregated per item before joining, so fan-out is impossible.
+- Incremental merge on `_source_updated_at` (latest loader timestamp across line, invoice, contact, item and DC), so late mapping fixes reprocess affected lines.
+- Contract enforced on the fact, with `on_schema_change = 'fail'`.
+- Nulls + status columns instead of `-1` unknown members.
 
 ## Tests
+- Fact row count equals source lines (no fan-out, no drops).
+- Amount reconciles to source.
+- Nulls only where a status column explains them.
+- Cross-company checks on product, customer and DC mappings.
+- New items without a `line_type` fail the build.
+- A second incremental run with no changes processes 0 rows.
 
-- **Sources and staging:** `unique` / `not_null` on primary keys; invoice lines → invoices relationship.
-- **Intermediate:** one row per key on every mapping model; accepted values on status columns; `(company_detail_id, remote_id)` unique in contacts.
-- **Fact:**
-  - `equal_rowcount` vs source lines (no fan-out, no dropped lines)
-  - amount reconciles to source
-  - `relationships` to every dimension (nulls allowed)
-  - nulls only where the status column explains them
-- **Cross-company checks:** product ↔ item, contact ↔ customer, and default DC ↔ customer must belong to the same company (or be shared).
-- **Seed coverage:** a new item without a `line_type` fails the build instead of being labelled silently.
-- **Audit:** one row per `(entity_type, company_detail_id, remote_id)`; accepted values on `entity_type` and `map_status`.
-
-Incremental logic verified: a second run with no source changes processes 0 rows.
-
-## Limitations and production improvements
-
-- **Schemas:** all models are in one schema due to access limits. In production, layers would be separated into schemas inside an environment database, with analysts granted read access to marts only (`+schema`, `+grants`).
-- **Store test failures** (`--store-failures`) in an audit schema.
-- **FX rates** source to populate `amount_usd` for non-USD invoices.
-- **Snapshots (SCD2)** on contacts and products if mappings need point-in-time history.
-- **Deletes** aren't caught by the incremental filter, and the sources have no soft-delete flag. Options: a `post_hook` that deletes fact rows with no match in `int_invoice_items__enriched` (also covers deleted invoice headers), plus a scheduled full refresh as a safety net. `assert_fact_amount_reconciles_to_source` fails if an orphan remains.
-- **Seed changes** aren't caught either: `item_line_types.csv` has no timestamp, so a reclassified item doesn't move `_source_updated_at`. Full-refresh the fact after changing the seed (in CI: `state:modified` on the seed and its children).
-- **Parent inheritance is one level.** A contact inherits only from its direct parent. Deeper hierarchies would need a recursive CTE with a depth limit to guard against cycles.
-- **Audit matching cost** grows with unmapped contacts × customers, and the model is a view, so it reruns on every query. At larger volume: add a blocking key (e.g. name prefix) and materialize it as a table.
-- **Out of scope:** Retailers, Product_Prices, Product_Shipping_Config, Product_Relationship. Possible extensions: price variance vs list price, and case-to-unit (BOM) explosion.
+## Limitations
+- Single schema due to access limits; production would split layers into schemas with grants.
+- No FX rate source for non-USD invoices.
+- Deletes aren't caught incrementally → cleanup post_hook + scheduled full refresh.
+- Seed changes don't trigger the incremental → full refresh the fact after seed edits.
+- Audit fuzzy matching grows with contacts × customers → add a blocking key and materialize as a table.
+- Out of scope: Retailers, Product_Prices, Product_Shipping_Config, Product_Relationship, Map_Contact_Subsidiaries.
