@@ -26,9 +26,10 @@ Rebuild the fact from scratch: `dbt build -s fct_invoice_line_items --full-refre
 models/
 ├── staging/          # 1:1 with source tables: rename, cast, flag (views)
 ├── intermediate/     # mapping logic (views)
-└── marts/
-    ├── facts/        # fct_invoice_line_items (incremental, contract enforced)
-    └── dimensions/   # dim_customers, dim_products, dim_distribution_centers, dim_items
+├── marts/
+│   ├── facts/        # fct_invoice_line_items (incremental, contract enforced)
+│   └── dimensions/   # dim_customers, dim_products, dim_distribution_centers, dim_items
+└── audit/            # audit_unmapped_remote_ids: work queue for unmapped IDs (view)
 seeds/
 └── item_line_types.csv   # item → product / trade_spend / deduction / fee / adjustment / test
 tests/                    # singular data tests
@@ -44,6 +45,8 @@ stg_invoice_items ─────────┤
 stg_contacts ──► int_contacts__resolved_customer ─┤
 stg_items + stg_products + seed ──► int_items__resolved_product ─┼─► int_invoice_items__enriched ─► fct_invoice_line_items
 stg_distribution_centers ──► int_customers__default_dc ──────────┘
+
+fct_invoice_line_items + int_contacts__resolved_customer + dim_customers + dim_items ─► audit_unmapped_remote_ids
 ```
 
 ## Mapping logic
@@ -60,6 +63,17 @@ Every mapping has a status column so each null is explained:
 - `customer_map_status`: `direct`, `inherited_from_parent`, `unmapped`, `contact_not_found`
 - `product_map_status`: `mapped`, `ambiguous`, `no_product`, `item_not_found`
 - `dc_assignment`: `direct`, `default`, `unmapped`
+
+## Audit model
+
+`audit_unmapped_remote_ids` is a work queue for data stewards: one row per unmapped remote ID (`entity_type`, `company_detail_id`, `remote_id`), with its line count and dollar impact so the largest gaps get fixed first.
+
+- **Customers:** `unmapped` and `contact_not_found` remote IDs.
+- **Items:** `ambiguous` and `item_not_found` items, plus `no_product` items whose `line_type` is `product`. Non-product items (EDLP, fees, etc.) are expected and excluded.
+- **Suggested customer matches:** each unmapped contact is scored against every customer it may map to (shared customers or its own company's) with `JAROWINKLER_SIMILARITY` (0–100). The best match is suggested only when the score is ≥ 90.
+- **`strong_match_count`** is the number of candidates scoring ≥ 90. A count of 1 is a clear match; more than 1 means the names are too close to choose automatically and need manual review.
+
+Suggestions are never applied automatically.
 
 ## Results
 
@@ -121,6 +135,7 @@ Every mapping has a status column so each null is explained:
   - nulls only where the status column explains them
 - **Cross-company checks:** product ↔ item, contact ↔ customer, and default DC ↔ customer must belong to the same company (or be shared).
 - **Seed coverage:** a new item without a `line_type` fails the build instead of being labelled silently.
+- **Audit:** one row per `(entity_type, company_detail_id, remote_id)`; accepted values on `entity_type` and `map_status`.
 
 Incremental logic verified: a second run with no source changes processes 0 rows.
 
@@ -128,8 +143,10 @@ Incremental logic verified: a second run with no source changes processes 0 rows
 
 - **Schemas:** all models are in one schema due to access limits. In production, layers would be separated into schemas inside an environment database, with analysts granted read access to marts only (`+schema`, `+grants`).
 - **Store test failures** (`--store-failures`) in an audit schema.
-- **Audit model** listing unmapped remote IDs with suggested matches (`JAROWINKLER_SIMILARITY`) for human review, e.g. "Loblaw" and "Kroger" contacts.
 - **FX rates** source to populate `amount_usd` for non-USD invoices.
 - **Snapshots (SCD2)** on contacts and products if mappings need point-in-time history.
-- **Deletes** aren't caught by the incremental filter; a periodic full refresh covers them.
+- **Deletes** aren't caught by the incremental filter, and the sources have no soft-delete flag. Options: a `post_hook` that deletes fact rows with no match in `int_invoice_items__enriched` (also covers deleted invoice headers), plus a scheduled full refresh as a safety net. `assert_fact_amount_reconciles_to_source` fails if an orphan remains.
+- **Seed changes** aren't caught either: `item_line_types.csv` has no timestamp, so a reclassified item doesn't move `_source_updated_at`. Full-refresh the fact after changing the seed (in CI: `state:modified` on the seed and its children).
+- **Parent inheritance is one level.** A contact inherits only from its direct parent. Deeper hierarchies would need a recursive CTE with a depth limit to guard against cycles.
+- **Audit matching cost** grows with unmapped contacts × customers, and the model is a view, so it reruns on every query. At larger volume: add a blocking key (e.g. name prefix) and materialize it as a table.
 - **Out of scope:** Retailers, Product_Prices, Product_Shipping_Config, Product_Relationship. Possible extensions: price variance vs list price, and case-to-unit (BOM) explosion.
