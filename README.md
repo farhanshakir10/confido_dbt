@@ -11,7 +11,7 @@ This project builds `fct_invoice_line_items`: one row per invoice line, with rem
 ## How to run
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+source ../confido-dbt/bin/activate
 pip install -r requirements.txt
 dbt deps
 dbt seed
