@@ -18,3 +18,9 @@ models:
     columns:
       - name: distribution_center_id
         data_tests: [unique, not_null]
+
+  - name: stg_confido__product_relationships
+    description: Parent → child product links (case → pack → single) with the child quantity.
+    columns:
+      - name: product_relationship_id
+        data_tests: [unique, not_null]
