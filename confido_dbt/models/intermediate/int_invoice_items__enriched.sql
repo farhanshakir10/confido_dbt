@@ -57,6 +57,7 @@ select
     coalesce(i.line_type, 'unclassified') as line_type,
 
     -- amounts
+    ii.quantity,
     inv.currency_code,
     inv.is_currency_defaulted,
     ii.amount_original,

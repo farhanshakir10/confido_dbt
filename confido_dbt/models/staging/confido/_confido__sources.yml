@@ -16,3 +16,5 @@ sources:
         description: Confido global customer master.
       - name: CONFIDO_DISTRIBUTION_CENTERS
         description: Distribution centers, each belonging to one global customer.
+      - name: PRODUCT_RELATIONSHIPS
+        description: Parent child product links with the quantity of child per parent.

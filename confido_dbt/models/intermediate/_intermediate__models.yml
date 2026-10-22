@@ -21,7 +21,8 @@ models:
           - accepted_values:
               arguments:
                 values: ["direct", "inherited_from_parent", "unmapped"]
-    # One row per item, with product mapping and line type
+
+  # One row per item, with product mapping and line type
   - name: int_items__resolved_product
     description: One row per item, with a product only when exactly one matches, plus line type.
     columns:
@@ -53,7 +54,8 @@ models:
     columns:
       - name: global_customer_id
         data_tests: [unique, not_null]
-    # One row per invoice line, with every mapping resolved
+
+  # One row per invoice line, with every mapping resolved
   - name: int_invoice_items__enriched
     description: One row per invoice line with customer, DC, product and change timestamp resolved.
     data_tests:
@@ -85,3 +87,29 @@ models:
           - accepted_values:
               arguments:
                 values: ["direct", "default", "unmapped"]
+
+  # One row per product with its level: case, pack, single or shipper
+  - name: int_products__levels
+    description: One row per product with its packaging level.
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+
+  # One row per case that contains packs
+  - name: int_products__packs_per_case
+    description: Packs per case, from the case's direct children that are packs.
+    columns:
+      - name: case_product_id
+        data_tests: [unique, not_null]
+
+  # One row per invoice line, with quantities in cases and packs
+  - name: int_invoice_items__quantities
+    description: Invoice lines with quantities converted to cases and packs.
+    data_tests:
+      # Same row count as the enriched lines: the conversion joins add no rows
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('int_invoice_items__enriched')
+    columns:
+      - name: invoice_item_id
+        data_tests: [unique, not_null]
